@@ -1,0 +1,379 @@
+---
+title: ""
+output: html_document
+date: "2024-04-06"
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+library(shinythemes)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(plotly)
+library(ggpubr)
+```
+
+# An Simple Air BnB Analysis - Paris Version
+
+In the realm of contemporary travel and accommodation, few names resonate as profoundly as Airbnb. With its inception in 2008 as an online platform connecting travelers with unique lodging options, Airbnb has swiftly evolved into a global phenomenon, boasting over 7 million listings in 220 countries and regions by the end of 2023. This exponential growth has not only revolutionized the hospitality industry but has also spurred intense scrutiny and debate surrounding its economic, social, and regulatory implications.
+
+This report endeavors to dissect the multifaceted impacts of Airbnb, ranging from its
+• Relationship between prices and apartment features,
+• Number of apartments per owner,
+• Renting price per city quarter (“arrondissements”),
+• Visit frequency of the different quarters according to time. 
+we aim to provide an analysis that sheds light within the Airbnb ecosystem.
+
+___
+
+## Loading data
+```{r }
+Data_raw_1 <- load("/Users/longyin/Desktop/bigdata with R/AirBnb_Project/AirBnB (1).Rdata")
+```
+## Selecting columns meaningful for the app
+
+```{r columns}
+df <- select(L, listing_id = id, Host_id = host_id, Host_name = host_name, bathrooms, bedrooms,
+            beds, bed_type, Equipments= amenities, Room_Type = property_type, Room = room_type,
+            accommodates,Price = price, minimum_nights, availability_one_year = availability_365, 
+            instant_bookable, cancellation_policy, city, Adresse = street, Neighbourhood = neighbourhood_cleansed,
+            zipcode, latitude, longitude, Superhost = host_is_superhost, Host_since = host_since,
+            Listing_count = calculated_host_listings_count, Review_Rating = review_scores_rating, Review_Accuracy = review_scores_accuracy, 
+            Review_Cleanliness = review_scores_cleanliness, Review_Checkin = review_scores_checkin, Review_Communication = review_scores_communication,
+            Review_Location = review_scores_location, Review_Value = review_scores_value,
+            reviews_per_month, number_of_reviews)
+```
+Removing the "$" on price - One of the factors we aim to analyze in this report is pricing, with a focus on numerical representation devoid of currency symbols or additional noise.
+```{r }
+df$Price <- substring(gsub("$","", as.character(df$Price)),2)
+```
+Uniform data types to number to "numeric" with "As.numeric"
+```{r, echo=FALSE}
+df$Price <- as.numeric(df$Price)
+df$bathroom <- as.numeric(df$bathrooms)
+df$bedrooms <- as.numeric(df$bedrooms)
+df$beds <- as.numeric(df$beds)
+df$accommodates <- as.numeric(df$accommodates)
+df$minimum_nights <- as.numeric(df$minimum_nights)
+df$availability_one_year <- as.numeric(df$availability_one_year)
+df$Review_Rating <- as.numeric(df$Review_Rating)
+df$reviews_per_month <- as.numeric(df$reviews_per_month)
+df$number_of_reviews <- as.numeric(df$number_of_reviews)
+df$Review_Accuracy <- as.numeric(df$Review_Accuracy)
+df$Review_Cleanliness <- as.numeric(df$Review_Cleanliness)
+df$Review_Checkin <- as.numeric(df$Review_Checkin)
+df$Review_Communication <- as.numeric(df$Review_Communication)
+df$Review_Location <- as.numeric(df$Review_Location)
+df$Review_Value <- as.numeric(df$Review_Value)
+```
+Checking the Missing Values
+```{r, echo=FALSE}
+sum(is.na(df$listing_id))
+sum(is.na(df$Price))
+sum(is.na(df$accommodates))
+sum(is.na(df$bedrooms))
+sum(is.na(df$beds))
+sum(is.na(df$bathrooms))
+sum(is.na(df$Room_Type))
+sum(is.na(df$Room))
+sum(is.na(df$Neighbourhood))
+sum(is.na(df$Zipcode))
+sum(is.na(df$Review_Rating))
+sum(is.na(df$latitude))
+sum(is.na(df$longitude))
+sum(is.na(df$number_of_reviews))
+sum(is.na(df$Review_Accuracy))
+sum(is.na(df$Review_Cleanliness))
+sum(is.na(df$Review_Checkin))
+sum(is.na(df$Review_Communication))
+sum(is.na(df$Review_Location))
+sum(is.na(df$Review_Value))
+
+```
+Price has 49 "na"s which can be replaced by median. 
+
+```{r, echo=FALSE}
+df <- df %>% mutate(across(Price, ~replace_na(., median(., na.rm=TRUE))))
+```
+In the examination of the dataset, it becomes evident that variables such as bedrooms, beds, bathrooms, and Review_Rating exhibit a notable prevalence of missing values denoted by "NA." Furthermore, it is advisable to refrain from utilizing measures of central tendency such as mean or median specifically for the attributes of bedrooms and beds, as their application in this context may engender ambiguity among the audience.
+```{r}
+df$bedrooms <- replace(df$bedrooms, is.na(df$bedrooms), 0)
+df$beds <- replace(df$beds, is.na(df$beds), 0)
+df$bathrooms <- replace(df$bathrooms, is.na(df$bathrooms), 0)
+df$Review_Rating <- replace(df$Review_Rating, is.na(df$Review_Rating), "Non")
+df$Review_Accuracy <- replace(df$Review_Accuracy, is.na(df$Review_Accuracy), "Non")
+df$Review_Cleanliness <- replace(df$Review_Cleanliness, is.na(df$Review_Cleanliness), "Non")
+df$Review_Checkin <- replace(df$Review_Checkin, is.na(df$Review_Checkin), "Non")
+df$Review_Communication <- replace(df$Review_Communication, is.na(df$Review_Communication), "Non")
+df$Review_Location <- replace(df$Review_Location, is.na(df$Review_Location), "Non")
+df$Review_Value <- replace(df$Review_Value, is.na(df$Review_Value), "Non")
+df$reviews_per_month <- replace(df$reviews_per_month, is.na(df$reviews_per_month), "Non")
+```
+"Clean up" the Neighbourhoods. It is about Paris. So, we have 20 arrondisments (City Quarter)
+Downsize the strings in city with 5 characters to fit Paris and use zipcode to filter all the data also use the zipcode to marke the number of arrondisment
+```{r, echo=FALSE}
+df$city = str_sub(df$city,1, 5)
+df$zipcode = str_sub(df$zipcode, -2)
+```
+Actually there are "Paris" in column "city" with different languages, but unfortunatly, I couldnt find the way to replace them, which made me frustrated.
+There are also couple of empty cells. For saving time and work load, I choos not to select them into subset.
+```{r, echo=FALSE}
+df_Paris <- subset(df, df$city == 'Paris' & df$zipcode != "" & df$zipcode <= 20 & df$zipcode != '00' & df$zipcode != ' ')
+```
+Remove the duplicated data
+
+```{r, echo=FALSE}
+df_Paris <- unique(df_Paris)
+```
+## Analysis df_Paris and try the answer the questions required
+
+1. Relationship between prices and apartment features,
+2. Number of apartments per owner,
+3. Renting price per city quarter (“arrondissements”),
+4. Visit frequency of the different quarters according to time.
+
+### Distribution of Price
+
+```{r, echo=FALSE}
+summary(df_Paris$Price)
+```
+Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+0.00   55.00   75.00   95.48  111.00  997.00 
+
+There are two rows with prices 0, but one of them has overall not bad review. So I ll keep these two to see how they go later. similary strategy apply to the ones with max prices.
+From the histogram, we can find the Air BnB in Paris largely range from roughly 30 to 200. 
+
+```{r}
+par(mfrow=c(2,1))
+x = df_Paris$Price
+hist(x, 
+     main = "Distribution of Price", 
+     xlab = "Price in Paris (in $)",
+     ylab = "Frequency",
+     col='lavender',  breaks = 15, freq=FALSE)
+lines(density(x),lwd=2,col='brown')
+boxplot(x, col='lavender', breaks = 15, horizontal = TRUE)
+
+```
+## Relationship between prices and apartment features
+
+Further to type of Property, Apartement is the majority, which took 96.16 %
+```{r}
+Types_Count <- data.frame(table(df_Paris$Room_Type))
+
+ggplot(Types_Count, aes(x = "", y = Freq, fill = Var1)) +
+  geom_bar(stat = "identity", width = 1) + 
+  geom_text(aes(label = paste(Var1, "(", Freq, ")", sep = "")), 
+            position = position_stack(vjust = 0.5), 
+            color = "white", size = 3) +
+  coord_polar(theta = "y") +  # Convert bar plot to pie chart
+  labs(title = "Pie Chart of Property Types", fill = "Property Type", x = NULL, y = NULL) +  # Add title and remove axis labels
+  theme_void() 
+
+```
+Apartement Percentage -  #[1] 96.16
+```{r}
+total_count <- sum(Types_Count$Freq)
+apartment_row <- Types_Count[Types_Count$Var1 == "Apartment", ]
+apartment_percentage <- round((apartment_row$Freq / total_count) * 100, 2)
+print(apartment_percentage)
+
+```
+
+## Price vs Property type
+Villa and Camper/RV are much more expecive than others. But they took only very small part in the property. 
+```{r}
+ggplot(df_Paris)+  geom_boxplot(aes(x = Room_Type,y = Price,fill = Room_Type))+
+  labs(x = "Property Type",y = "Price",fill = "Property Type")+  
+  coord_flip()
+```
+## Price vs Room Type - there are only 3 types of room rent
+```{r}
+RoomType_Count <- data.frame(table(df_Paris$Room)) 
+
+ggplot(RoomType_Count, aes(x = "", y = Freq, fill = Var1)) +
+  geom_bar(stat = "identity", width = 1) + 
+  geom_text(aes(label = paste(Var1, "(", Freq, ")", sep = "")), 
+            position = position_stack(vjust = 0.5), 
+            color = "white", size = 3) +
+  coord_polar(theta = "y") +  # Convert bar plot to pie chart
+  labs(title = "Pie Chart of Room Types", fill = "Room Type", x = NULL, y = NULL) +  # Add title and remove axis labels
+  theme_void() 
+
+```
+
+Entire Home/apt rent took majority of room type. 
+Room type Percentage,  which is 85.83%
+```{r}
+total_count <- sum(RoomType_Count$Freq)
+Entire_Row <- RoomType_Count[RoomType_Count$Var1 == "Entire home/apt", ]
+Entire_percentage <- round((Entire_Row$Freq / total_count) * 100, 2)
+print(Entire_percentage)
+
+```
+
+## Price VS Features
+I will conduct an analysis of rental prices, examining various features such as bathrooms, bedrooms, beds, and bed type.
+
+```{r}
+c1<- ggplot(data = df_Paris) +
+  theme_light() +
+  geom_point(aes(x = Price, y = bathrooms,col=factor(bed_type))) +
+  geom_smooth(aes(x = Price, y = bathrooms),method='lm')
+  
+
+c2<- ggplot(data = df_Paris) +
+  theme_light() +
+  geom_point(aes(x = Price, y = bedrooms,col=factor(bed_type))) +
+  geom_smooth(aes(x = Price, y = bedrooms),method='lm')
+
+c3<- ggplot(data = df_Paris) +
+  theme_light() +
+  geom_point(aes(x = Price, y = beds,col=factor(bed_type))) +
+  geom_smooth(aes(x = Price, y = beds),method='lm')
+  
+
+c4<- ggplot(data = df_Paris) +
+  theme_light() +
+  geom_point(aes(x = Price, y = accommodates ,col=factor(bed_type))) +
+  geom_smooth(aes(x = Price, y = accommodates),method='lm')
+
+ggarrange(
+  c1,
+  c2,
+  c3,
+  c4,
+  
+  nrow=2,
+  ncol=2,
+  
+  align = "hv")
+
+```
+
+Based on the chart, it is evident that the majority of rentals feature real beds. A few instances of blue (Pull-out Sofa) are visible, although they represent a minor portion. Other bed types are scarcely represented in the charts.Furthermore, four of the variables exhibit distinct linear regression relationships with price. Particularly noteworthy is the relationship between price and accommodates; properties commanding higher prices tend to accommodate more guests.
+
+## Number of apartments per owner
+From the result, we find there are 43,695 hosts in list. Among them, there are 3,240 hosts who has more than 1 property on rent.
+From the coral chart, we can find most the host who own 1 property. However, there are two hosts who have respectively 154 and 138 properties in Paris. 
+They are ID 2288803, ID 2667370. Who are they? ID 2288803 = Fabien, ID 2667370 = Parisian Home.
+Average number of apartments per owner : 1.2
+
+```{r}
+Host_Count <- data.frame(table(df_Paris$Host_id))
+Host_Count_2 <- subset(Host_Count, Freq > 1)
+
+ggplot(data = Host_Count) +
+  geom_bar(aes(x = '',fill=factor(Freq)))
+
+person_1 <- df[df$Host_id == 2288803, "Host_name"]
+print (person_1)
+
+person_2 <- df[df$Host_id == 2667370, "Host_name"]
+print (person_2)
+
+Average_Nb <- round(mean(Host_Count$Freq), 1)
+print(Average_Nb)
+
+```
+
+## Renting price per city quarter (“arrondissements”)
+I have filtered the "Price" and "Zipcode" columns from the DataFrame df_paris. The "Zipcode" column can be utilized to count the total number of listings, while the "Price" column can be aggregated by quarters of the city's zip codes. This aggregation will enable us to calculate the average price per city quarter.
+
+```{r}
+price_quater <- select(df_Paris, Price, zipcode)
+
+ggplot(data = price_quater) +
+  theme_light() +
+  geom_bar(aes(x = '',fill=factor(zipcode))) + 
+  coord_polar(theta = 'y')
+
+```
+
+It appears that 75001 has the fewest property listings, while 75018 has the most, with 75011 ranking second. This discrepancy may be attributed to the fact that 75001 is located in the very center of Paris, where there may be fewer personally owned properties available for rent compared to other areas.
+To calculate the average price per quarter, rounding to two decimals, and then construct a DataFrame named "Avg_Quarter" with the quarter number and its corresponding average price. Ultimately, the average prices are depicted using geom_point.
+
+```{r}
+Avg_01 <- round(mean(price_quater$Price[price_quater$zipcode == "01"] ), 2)
+Avg_02 <- round(mean(price_quater$Price[price_quater$zipcode == "02"] ), 2)
+Avg_03 <- round(mean(price_quater$Price[price_quater$zipcode == "03"] ), 2)
+Avg_04 <- round(mean(price_quater$Price[price_quater$zipcode == "04"] ), 2)
+Avg_05 <- round(mean(price_quater$Price[price_quater$zipcode == "05"] ), 2)
+Avg_06 <- round(mean(price_quater$Price[price_quater$zipcode == "06"] ), 2)
+Avg_07 <- round(mean(price_quater$Price[price_quater$zipcode == "07"] ), 2)
+Avg_08 <- round(mean(price_quater$Price[price_quater$zipcode == "08"] ), 2)
+Avg_09 <- round(mean(price_quater$Price[price_quater$zipcode == "09"] ), 2)
+Avg_10 <- round(mean(price_quater$Price[price_quater$zipcode == "10"] ), 2)
+Avg_11 <- round(mean(price_quater$Price[price_quater$zipcode == "11"] ), 2)
+Avg_12 <- round(mean(price_quater$Price[price_quater$zipcode == "12"] ), 2)
+Avg_13 <- round(mean(price_quater$Price[price_quater$zipcode == "13"] ), 2)
+Avg_14 <- round(mean(price_quater$Price[price_quater$zipcode == "14"] ), 2)
+Avg_15 <- round(mean(price_quater$Price[price_quater$zipcode == "15"] ), 2)
+Avg_16 <- round(mean(price_quater$Price[price_quater$zipcode == "16"] ), 2)
+Avg_17 <- round(mean(price_quater$Price[price_quater$zipcode == "17"] ), 2)
+Avg_18 <- round(mean(price_quater$Price[price_quater$zipcode == "18"] ), 2)
+Avg_19 <- round(mean(price_quater$Price[price_quater$zipcode == "19"] ), 2)
+Avg_20 <- round(mean(price_quater$Price[price_quater$zipcode == "20"] ), 2)
+
+Avg_Quater <- data.frame (
+  Quater = c("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"),
+  Average_Price = c(Avg_01, Avg_02, Avg_03, Avg_04, Avg_05, Avg_06, Avg_07, Avg_08, Avg_09, Avg_10, Avg_11, Avg_12, Avg_13, Avg_14, Avg_15, Avg_16, Avg_17, Avg_18, Avg_19, Avg_20)
+
+)
+
+view(Avg_Quater)
+
+ggplot(data = Avg_Quater) +
+  theme_light() +
+  geom_point(aes(x = Quater, y = Average_Price,col=factor(Quater)))
+
+```
+Quarter 8 exhibits the highest average rental price, likely due to its abundance of historical Parisian buildings and renowned scenic views and business centers. Conversely, quarters 20 and 19 experience the lowest average rents, possibly because of their distance from the city center. Quarter 16 stands out as an exception, boasting an average price higher than other double-digit quarters. This anomaly can be attributed to its chic ambiance and proximity to landmarks such as Champs Elysee and other iconic views.
+
+## Visit frequency of the different quarters according to time
+Convert the "date" in factor to in date format. 
+create a table by joint the df_Paris and R by listing_id. 
+creates a new data frame by adding a "year" column by which extracts the first 4 digits (representing the year) from the "date" column using a regular expression.
+```{r}
+table <- inner_join(df_Paris, R,by = "listing_id")
+table = mutate(table,year = as.numeric(str_extract(table$date, "^\\d{4}")))
+
+
+c1 <- ggplot(table) +
+  geom_bar(aes(y =zipcode ,fill=factor(year)))+
+  scale_size_area() +
+  labs( x="Frequency", y="City quarter",fill="Year")+
+  scale_fill_brewer(palette ="PuBu")
+
+ggplotly(c1)
+
+```
+
+Based on the chart, it is evident that the most visited quarter is 18, followed by 11 and 10. Despite its popularity, quarter 18 has a lower average price compared to others, particularly noticeable around 2015. Conversely, quarter 08 has the lowest visitation rate, likely attributable to its relatively high prices.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
