@@ -1,0 +1,386 @@
+library(DT)  # Load the DT package for the datatable function
+library(shiny)
+library(shinythemes)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(plotly)
+library(ggpubr)
+
+#Loading data
+Data_raw_1 <-
+  load("/Users/longyin/Desktop/bigdata with R/AirBnb_Project/AirBnB (1).Rdata")
+
+#selecting columns meaningful for the app
+df <-
+  select(
+    L,
+    listing_id = id,
+    Host_id = host_id,
+    Host_name = host_name,
+    bathrooms,
+    bedrooms,
+    beds,
+    bed_type,
+    Equipments = amenities,
+    Room_Type = property_type,
+    Room = room_type,
+    accommodates,
+    Price = price,
+    minimum_nights,
+    availability_one_year = availability_365,
+    instant_bookable,
+    cancellation_policy,
+    city,
+    Adresse = street,
+    Neighbourhood = neighbourhood_cleansed,
+    zipcode,
+    latitude,
+    longitude,
+    Superhost = host_is_superhost,
+    Host_since = host_since,
+    Listing_count = calculated_host_listings_count,
+    Review_Rating = review_scores_rating,
+    Review_Accuracy = review_scores_accuracy,
+    Review_Cleanliness = review_scores_cleanliness,
+    Review_Checkin = review_scores_checkin,
+    Review_Communication = review_scores_communication,
+    Review_Location = review_scores_location,
+    Review_Value = review_scores_value,
+    reviews_per_month,
+    number_of_reviews
+  )
+
+#Removing the "$" on price
+df$Price <- substring(gsub("$", "", as.character(df$Price)), 2)
+
+# Uniform some of data types that refer to number to "numeric"
+df$Price <- as.numeric(df$Price)
+df$bathroom <- as.numeric(df$bathrooms)
+df$bedrooms <- as.numeric(df$bedrooms)
+df$beds <- as.numeric(df$beds)
+df$accommodates <- as.numeric(df$accommodates)
+df$minimum_nights <- as.numeric(df$minimum_nights)
+df$availability_one_year <- as.numeric(df$availability_one_year)
+df$Review_Rating <- as.numeric(df$Review_Rating)
+df$reviews_per_month <- as.numeric(df$reviews_per_month)
+df$number_of_reviews <- as.numeric(df$number_of_reviews)
+df$Review_Accuracy <- as.numeric(df$Review_Accuracy)
+df$Review_Cleanliness <- as.numeric(df$Review_Cleanliness)
+df$Review_Checkin <- as.numeric(df$Review_Checkin)
+df$Review_Communication <- as.numeric(df$Review_Communication)
+df$Review_Location <- as.numeric(df$Review_Location)
+df$Review_Value <- as.numeric(df$Review_Value)
+
+#Checking the Missing Values
+sum(is.na(df$listing_id))
+sum(is.na(df$Price))
+sum(is.na(df$accommodates))
+sum(is.na(df$bedrooms))
+sum(is.na(df$beds))
+sum(is.na(df$bathrooms))
+sum(is.na(df$Room_Type))
+sum(is.na(df$Room))
+sum(is.na(df$Neighbourhood))
+sum(is.na(df$Zipcode))
+sum(is.na(df$Review_Rating))
+sum(is.na(df$latitude))
+sum(is.na(df$longitude))
+sum(is.na(df$number_of_reviews))
+sum(is.na(df$Review_Accuracy))
+sum(is.na(df$Review_Cleanliness))
+sum(is.na(df$Review_Checkin))
+sum(is.na(df$Review_Communication))
+sum(is.na(df$Review_Location))
+sum(is.na(df$Review_Value))
+## Price has 49 "na"s which can be replaced by median.
+df <-
+  df %>% mutate(across(Price, ~ replace_na(., median(., na.rm = TRUE))))
+
+# # I find bedrooms, beds, bathrooms and Review_Rating having many "NA"s. Also bedrooms and beds is beetter not to place by means or median, which may led to confusion of audiens.
+# # So I am thinking if it is a good idea to replace NA with 0 for bedrooms, bathrooms and beds which with "Non" for the Reviews.
+# # Replace "NA"s with 0s using replace()
+df$bedrooms <- replace(df$bedrooms, is.na(df$bedrooms), 0)
+df$beds <- replace(df$beds, is.na(df$beds), 0)
+df$bathrooms <- replace(df$bathrooms, is.na(df$bathrooms), 0)
+df$Review_Rating <-
+  replace(df$Review_Rating, is.na(df$Review_Rating), "Non")
+df$Review_Accuracy <-
+  replace(df$Review_Accuracy, is.na(df$Review_Accuracy), "Non")
+df$Review_Cleanliness <-
+  replace(df$Review_Cleanliness, is.na(df$Review_Cleanliness), "Non")
+df$Review_Checkin <-
+  replace(df$Review_Checkin, is.na(df$Review_Checkin), "Non")
+df$Review_Communication <-
+  replace(df$Review_Communication,
+          is.na(df$Review_Communication),
+          "Non")
+df$Review_Location <-
+  replace(df$Review_Location, is.na(df$Review_Location), "Non")
+df$Review_Value <-
+  replace(df$Review_Value, is.na(df$Review_Value), "Non")
+df$reviews_per_month <-
+  replace(df$reviews_per_month, is.na(df$reviews_per_month), "Non")
+
+#"Clean up" the Neighbourhoods. It is about Paris. Therefore, we have 20 arrondisments (City Quarter)
+# Downsize the strings in city with 5 characters to fit Paris and use zipcode to filter all the data also use the zipcode to marke the number of arrondisment,
+df$city = str_sub(df$city, 1, 5)
+df$zipcode = str_sub(df$zipcode,-2)
+# Actually there are "Paris" in column "city" with different languages, but unfortunatly, I couldnt find the way to replace them, which made me frustrated.
+# There are also couple of empty cells. For saving time and work load, I choos not to select them into subset.
+
+df_Paris <-
+  subset(
+    df,
+    df$city == 'Paris' &
+      df$zipcode != "" &
+      df$zipcode <= 20 & df$zipcode != '00' & df$zipcode != ' '
+  )
+#Remove the duplicated data
+df_Paris <- unique(df_Paris)
+
+price_quater <- select(df_Paris, Price, zipcode)
+
+Avg_01 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "01"]), 2)
+Avg_02 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "02"]), 2)
+Avg_03 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "03"]), 2)
+Avg_04 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "04"]), 2)
+Avg_05 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "05"]), 2)
+Avg_06 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "06"]), 2)
+Avg_07 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "07"]), 2)
+Avg_08 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "08"]), 2)
+Avg_09 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "09"]), 2)
+Avg_10 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "10"]), 2)
+Avg_11 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "11"]), 2)
+Avg_12 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "12"]), 2)
+Avg_13 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "13"]), 2)
+Avg_14 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "14"]), 2)
+Avg_15 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "15"]), 2)
+Avg_16 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "16"]), 2)
+Avg_17 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "17"]), 2)
+Avg_18 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "18"]), 2)
+Avg_19 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "19"]), 2)
+Avg_20 <-
+  round(mean(price_quater$Price[price_quater$zipcode == "20"]), 2)
+
+Avg_Quater <- data.frame (
+  Quater = c(
+    "01",
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20"
+  ),
+  Average_Price = c(
+    Avg_01,
+    Avg_02,
+    Avg_03,
+    Avg_04,
+    Avg_05,
+    Avg_06,
+    Avg_07,
+    Avg_08,
+    Avg_09,
+    Avg_10,
+    Avg_11,
+    Avg_12,
+    Avg_13,
+    Avg_14,
+    Avg_15,
+    Avg_16,
+    Avg_17,
+    Avg_18,
+    Avg_19,
+    Avg_20
+  )
+  
+)
+
+
+ui <- fluidPage(
+  mainPanel(
+    titlePanel("Number of apartments per owner"),
+    helpText("Var1 is the Host ID, Freq means quantity of apartement."),
+    DTOutput("myTable"),
+    br(),
+    titlePanel("Renting price per city quarter"),
+    DTOutput("myTable2"),
+    br(),
+    titlePanel("Visit frequency of the different quarters "),
+    plotOutput("zipcode_plot"),
+    br(),
+    titlePanel("Relationship between prices and apartment features"),
+    plotOutput("price_plot"),
+  ),
+)
+
+server <- function(input, output) {
+  my_data <- reactive({
+    Host_Count <- data.frame(table(df_Paris$Host_id))
+    return(Host_Count)
+  })
+  
+  output$myTable <- renderDT({
+    datatable(my_data(), options = list(pageLength = 5))
+  })
+  my_data_2 <- reactive({
+    Avg_Quater <- data.frame (
+      Quater = c(
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20"
+      ),
+      Average_Price = c(
+        Avg_01,
+        Avg_02,
+        Avg_03,
+        Avg_04,
+        Avg_05,
+        Avg_06,
+        Avg_07,
+        Avg_08,
+        Avg_09,
+        Avg_10,
+        Avg_11,
+        Avg_12,
+        Avg_13,
+        Avg_14,
+        Avg_15,
+        Avg_16,
+        Avg_17,
+        Avg_18,
+        Avg_19,
+        Avg_20
+      )
+      
+    )
+    return(Avg_Quater)
+  })
+  
+  output$myTable2 <- renderDT({
+    datatable(my_data_2(), options = list(pageLength = 5))
+  })
+  
+  output$zipcode_plot <- renderPlot({
+    table <- inner_join(df_Paris, R, by = "listing_id")
+    table = mutate(table, year = as.numeric(str_extract(table$date, "^\\d{4}")))
+    c1 <- ggplot(table) +
+      geom_bar(aes(y = zipcode , fill = factor(year))) +
+      scale_size_area() +
+      labs(x = "Frequency", y = "City quarter", fill = "Year") +
+      scale_fill_brewer(palette = "PuBu")
+    
+    print(c1)
+    print(table)
+  })
+  
+  output$price_plot <- renderPlot({
+    c1 <- ggplot(data = df_Paris) +
+      theme_light() +
+      geom_point(aes(
+        x = Price,
+        y = bathrooms,
+        col = factor(bed_type)
+      )) +
+      geom_smooth(aes(x = Price, y = bathrooms), method = 'lm')
+    
+    
+    c2 <- ggplot(data = df_Paris) +
+      theme_light() +
+      geom_point(aes(
+        x = Price,
+        y = bedrooms,
+        col = factor(bed_type)
+      )) +
+      geom_smooth(aes(x = Price, y = bedrooms), method = 'lm')
+    
+    c3 <- ggplot(data = df_Paris) +
+      theme_light() +
+      geom_point(aes(
+        x = Price,
+        y = beds,
+        col = factor(bed_type)
+      )) +
+      geom_smooth(aes(x = Price, y = beds), method = 'lm')
+    
+    
+    c4 <- ggplot(data = df_Paris) +
+      theme_light() +
+      geom_point(aes(
+        x = Price,
+        y = accommodates ,
+        col = factor(bed_type)
+      )) +
+      geom_smooth(aes(x = Price, y = accommodates), method = 'lm')
+    
+    
+    
+    print(ggarrange(
+      c1,
+      c2,
+      c3,
+      c4,
+      
+      nrow = 2,
+      ncol = 2,
+      
+      align = "hv"
+    ))
+  })
+  
+  
+}
+
+shinyApp(ui = ui, server = server)
+
